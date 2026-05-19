@@ -24,7 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CODEBERG_USER: "SuperHackerHashidaItaru"
-      REPO_NAME: "ishowspeed"
+      CONFIG_REPO_USER: "QaisAlsaid"
+      SOURCE_REPO_NAME: "ishowspeed-source"
+      RELEASE_REPO_NAME: "ishowspeed"
+      CONFIG_REPO_NAME: "ishowspeed-server-config"
       CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
       CONFIG_TOKEN: ${{ secrets.CONFIG_TOKEN }}
 
@@ -43,7 +46,7 @@ jobs:
 
     - name: Clone ishowspeed and verify tag
       run: |
-        git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$REPO_NAME.git" src_workspace
+        git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
         cd src_workspace
         
         echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
@@ -128,7 +131,7 @@ jobs:
       if: ${{ inputs.build_web }}
       run: |
         PAGES_DIR=$(mktemp -d)
-        git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$REPO_NAME.git" "$PAGES_DIR"
+        git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME.git" "$PAGES_DIR"
         
         rm -rf "$PAGES_DIR/webapp"
         mkdir -p "$PAGES_DIR/webapp"
@@ -148,14 +151,14 @@ jobs:
       run: |
         if [ -d "dist_artifacts" ] && [ "$(ls -A dist_artifacts)" ]; then
           echo "ensuring git tag registration state exists"
-          curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$REPO_NAME/tags" \
+          curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/tags" \
             -H "accept: application/json" \
             -H "Authorization: token $CODEBERG_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{"tag_name": "'"$TAG_NAME"'", "target": "'"$COMMIT_SHA"'"}' > /dev/null
 
           echo "creating or verifying codeberg release metadata wrapper"
-          RELEASE_RESP=$(curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$REPO_NAME/releases" \
+          RELEASE_RESP=$(curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases" \
             -H "accept: application/json" \
             -H "Authorization: token $CODEBERG_TOKEN" \
             -H "Content-Type: application/json" \
@@ -169,17 +172,37 @@ jobs:
             }')
 
           RELEASE_ID=$(echo "$RELEASE_RESP" | jq -r '.id // empty')
+          
           if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
-              RELEASE_ID=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$REPO_NAME/releases/tags/$TAG_NAME" \
+              echo "release already exists. fetching fallback release id"
+              RELEASE_ID=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/tags/$TAG_NAME" \
                 -H "accept: application/json" \
                 -H "Authorization: token $CODEBERG_TOKEN" | jq -r '.id // empty')
+              
+              echo "pre-flight check: scanning for duplicate assets to purge"
+              EXISTING_ASSETS=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets" \
+                -H "accept: application/json" \
+                -H "Authorization: token $CODEBERG_TOKEN")
+              
+              cd dist_artifacts
+              for asset in *; do
+                  if [ -f "$asset" ]; then
+                      MATCHING_ASSET_ID=$(echo "$EXISTING_ASSETS" | jq -r ".[] | select(.name==\"$asset\") | .id // empty")
+                      if [ ! -z "$MATCHING_ASSET_ID" ] && [ "$MATCHING_ASSET_ID" != "null" ]; then
+                          echo "removing old collision asset: $asset"
+                          curl -s -X DELETE "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets/$MATCHING_ASSET_ID" \
+                            -H "Authorization: token $CODEBERG_TOKEN" > /dev/null
+                      fi
+                  fi
+              done
+              cd ..
           fi
 
           echo "Uploading active runtime binaries to codeberg release id: $RELEASE_ID"
           cd dist_artifacts
           for asset in *; do
               if [ -f "$asset" ]; then
-                  curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$REPO_NAME/releases/$RELEASE_ID/assets" \
+                  curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets" \
                     -H "Authorization: token $CODEBERG_TOKEN" \
                     -H "Content-Type: multipart/form-data" \
                     -F "attachment=@$asset" > /dev/null
@@ -193,9 +216,9 @@ jobs:
     - name: Sync versions to server config
       run: |
         CONFIG_DIR=$(mktemp -d)
-        BASE_DL="https://codeberg.org/$CODEBERG_USER/$REPO_NAME/releases/download/$TAG_NAME"
+        BASE_DL="https://codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/download/$TAG_NAME"
         
-        git clone "https://x-access-token:$CONFIG_TOKEN@github.com/QaisAlsaid/ishowspeed-server-config.git" "$CONFIG_DIR"
+        git clone "https://x-access-token:$CONFIG_TOKEN@github.com/$CONFIG_REPO_USER/$CONFIG_REPO_NAME.git" "$CONFIG_DIR"
         cd "$CONFIG_DIR"
         
         VERSION_EXPR=".latest_version = \"$RAW_VERSION\""
