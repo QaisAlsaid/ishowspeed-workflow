@@ -243,3 +243,10 @@ jobs:
         git push origin master
         cd - > /dev/null
         rm -rf "$CONFIG_DIR"
+
+    - name: Notify production server to flush caches
+      run: |
+        echo "notifying backend server of fresh server configuration changes"
+        curl -s -X POST "${{ secrets.SERVER_API_URL }}/webhook/update-config" \
+          -H "accept: application/json" \
+          -H "X-Webhook-Secret: ${{ secrets.SERVER_WEBHOOK_SECRET }}" > /dev/null
