@@ -158,18 +158,18 @@ jobs:
         cd ..
 
     - name: Download ubuntu artifacts
+      if: ${{ inputs.build_linux || inputs.build_android }}
       uses: actions/download-artifact@v4
       with:
         name: ubuntu-artifacts
         path: dist_artifacts/
-        ignore-on-error: true
 
     - name: Download windows artifacts
+      if: ${{ inputs.build_windows }}
       uses: actions/download-artifact@v4
       with:
         name: windows-artifacts
         path: dist_artifacts/
-        ignore-on-error: true
 
     - name: Calculate checksums
       run: |
