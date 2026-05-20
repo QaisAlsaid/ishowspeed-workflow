@@ -18,19 +18,24 @@ on:
         required: true
         type: boolean
         default: true
+      build_windows:
+        description: 'Build Windows'
+        required: true
+        type: boolean
+        default: true
+
+env:
+  CODEBERG_USER: "SuperHackerHashidaItaru"
+  CONFIG_REPO_USER: "QaisAlsaid"
+  SOURCE_REPO_NAME: "ishowspeed-source"
+  RELEASE_REPO_NAME: "ishowspeed"
+  CONFIG_REPO_NAME: "ishowspeed-server-config"
+  CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+  CONFIG_TOKEN: ${{ secrets.CONFIG_TOKEN }}
 
 jobs:
-  build-and-release:
+  build-ubuntu:
     runs-on: ubuntu-latest
-    env:
-      CODEBERG_USER: "SuperHackerHashidaItaru"
-      CONFIG_REPO_USER: "QaisAlsaid"
-      SOURCE_REPO_NAME: "ishowspeed-source"
-      RELEASE_REPO_NAME: "ishowspeed"
-      CONFIG_REPO_NAME: "ishowspeed-server-config"
-      CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
-      CONFIG_TOKEN: ${{ secrets.CONFIG_TOKEN }}
-
     steps:
     - name: Install linux build dependencies
       if: ${{ inputs.build_linux }}
@@ -44,84 +49,133 @@ jobs:
         channel: 'stable'
         architecture: x64
 
-    - name: Clone ishowspeed and verify tag
+    - name: Clone source repository
       run: |
         git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
-        cd src_workspace
-        
-        echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-        DETECTED_TAG=$(git tag --points-at HEAD | head -n 1)
-        
-        if [ -z "$DETECTED_TAG" ]; then
-          DETECTED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-        fi
-        
-        if [ -z "$DETECTED_TAG" ]; then
-          echo "=========================================================================="
-          echo "ERROR: no git tag found"
-          echo "please create a tag on Codeberg (e.g., v0.6.7) before triggering this pipeline"
-          echo "=========================================================================="
-          exit 1
-        fi
-        
-        RAW_VER=$(echo "$DETECTED_TAG" | sed 's/^v//')
-        echo "TAG_NAME=$DETECTED_TAG" >> $GITHUB_ENV
-        echo "RAW_VERSION=$RAW_VER" >> $GITHUB_ENV
-        
-        echo "verified tag found: $DETECTED_TAG (raw: $RAW_VER)"
-        cd ..
 
-    - name: compile
+    - name: Compile Platforms
       run: |
         cd src_workspace
         flutter pub get
         
         if [ "${{ inputs.build_android }}" = "true" ]; then
-          echo "compiling android universal"
           flutter build apk --release
-          
-          echo "archiving android universal"
-          mkdir -p ../android_holding_bay
-          cp build/app/outputs/flutter-apk/app-release.apk ../android_holding_bay/ishowspeed-release-android-universal.apk
+          mkdir -p ../ubuntu_artifacts
+          cp build/app/outputs/flutter-apk/app-release.apk ../ubuntu_artifacts/ishowspeed-release-android-universal.apk
           
           flutter clean
           flutter pub get
-          
-          echo "Compiling android split-abi"
           flutter build apk --release --split-per-abi
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ../ubuntu_artifacts/ishowspeed-release-android-armv7.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../ubuntu_artifacts/ishowspeed-release-android-armv8.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk ../ubuntu_artifacts/ishowspeed-release-android-x86_64.apk
         fi
         
         if [ "${{ inputs.build_linux }}" = "true" ]; then
-          echo "compiling linux"
           flutter build linux --release
+          mkdir -p ../ubuntu_artifacts
+          tar -czf ../ubuntu_artifacts/ishowspeed-release-linux-x64.tar.gz -C build/linux/x64/release/bundle .
         fi
         
         if [ "${{ inputs.build_web }}" = "true" ]; then
-          echo "compiling web ."
           flutter build web --release --base-href /webapp/
+          mkdir -p ../web_dist
+          cp -R build/web/* ../web_dist/
         fi
-        cd ..
 
-    - name: Rename and calculate checksums
+    - name: Upload Ubuntu Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ubuntu-artifacts
+        path: ubuntu_artifacts/
+        if-no-files-found: ignore
+
+    - name: Upload Web Dist
+      if: ${{ inputs.build_web }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-dist
+        path: web_dist/
+
+  build-windows:
+    if: ${{ inputs.build_windows }}
+    runs-on: windows-latest
+    steps:
+    - name: Setup flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+
+    - name: Clone source repository
+      shell: bash
+      run: |
+        git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
+
+    - name: Compile windows app
+      shell: bash
+      run: |
+        cd src_workspace
+        flutter pub get
+        flutter build windows --release
+
+    - name: Archive windows release
+      shell: bash
+      run: |
+        mkdir windows_artifacts
+        powershell Compress-Archive -Path src_workspace/build/windows/x64/runner/Release/* -DestinationPath windows_artifacts/ishowspeed-release-windows-x64.zip
+
+    - name: Upload Windows Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-artifacts
+        path: windows_artifacts/
+
+  sync-and-release:
+    needs: [build-ubuntu, build-windows]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup environment workspace
       run: |
         mkdir dist_artifacts
-        
-        if [ "${{ inputs.build_android }}" = "true" ]; then
-          cp android_holding_bay/ishowspeed-release-android-universal.apk dist_artifacts/
-          
-          APK_SRC="src_workspace/build/app/outputs/flutter-apk"
-          cp "$APK_SRC/app-armeabi-v7a-release.apk" dist_artifacts/ishowspeed-release-android-armv7.apk
-          cp "$APK_SRC/app-arm64-v8a-release.apk" dist_artifacts/ishowspeed-release-android-armv8.apk
-          cp "$APK_SRC/app-x86_64-release.apk" dist_artifacts/ishowspeed-release-android-x86_64.apk
+        mkdir src_workspace
+
+    - name: Clone framework to verify tags
+      run: |
+        git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
+        cd src_workspace
+        echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+        DETECTED_TAG=$(git tag --points-at HEAD | head -n 1)
+        if [ -z "$DETECTED_TAG" ]; then
+          DETECTED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
         fi
-        
-        if [ "${{ inputs.build_linux }}" = "true" ]; then
-          tar -czf dist_artifacts/ishowspeed-release-linux-x64.tar.gz -C src_workspace/build/linux/x64/release/bundle .
+        if [ -z "$DETECTED_TAG" ]; then
+          echo "ERROR: no git tag found"
+          exit 1
         fi
-        
+        echo "TAG_NAME=$DETECTED_TAG" >> $GITHUB_ENV
+        echo "RAW_VERSION=$(echo "$DETECTED_TAG" | sed 's/^v//')" >> $GITHUB_ENV
+        cd ..
+
+    - name: Download ubuntu artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ubuntu-artifacts
+        path: dist_artifacts/
+        ignore-on-error: true
+
+    - name: Download windows artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-artifacts
+        path: dist_artifacts/
+        ignore-on-error: true
+
+    - name: Calculate checksums
+      run: |
         cd dist_artifacts
         for file in *; do
-            if [[ -f "$file" && "$file" != *"*"* ]]; then
+            if [[ -f "$file" && "$file" != *"*"* && "$file" != "*.sha256" ]]; then
                 sha256sum "$file" > "$file".sha256
             fi
         done
@@ -130,34 +184,37 @@ jobs:
     - name: Deploy frontend to codeberg pages
       if: ${{ inputs.build_web }}
       run: |
-        PAGES_DIR=$(mktemp -d)
-        git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME.git" "$PAGES_DIR"
+        mkdir web_dist
+        IMAGE_BUFF=$(mktemp -d)
         
-        rm -rf "$PAGES_DIR/webapp"
-        mkdir -p "$PAGES_DIR/webapp"
-        cp -R src_workspace/build/web/* "$PAGES_DIR/webapp/"
-        cp src_workspace/index.html "$PAGES_DIR/" || true
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web_dist/
         
-        cd "$PAGES_DIR"
+        git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME.git" "$IMAGE_BUFF"
+        rm -rf "$IMAGE_BUFF/webapp"
+        mkdir -p "$IMAGE_BUFF/webapp"
+        cp -R web_dist/* "$IMAGE_BUFF/webapp/"
+        
+        cd "$IMAGE_BUFF"
         git config user.name "GitHub Action Runner"
         git config user.email "runner@github.actions"
         git add .
         git diff-index --quiet HEAD || git commit -m "deploy: updated web for $TAG_NAME"
         git push origin pages
         cd - > /dev/null
-        rm -rf "$PAGES_DIR"
+        rm -rf "$IMAGE_BUFF"
 
     - name: Sync releases and upload artifacts to codeberg
       run: |
         if [ -d "dist_artifacts" ] && [ "$(ls -A dist_artifacts)" ]; then
-          echo "ensuring git tag registration state exists"
           curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/tags" \
             -H "accept: application/json" \
             -H "Authorization: token $CODEBERG_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{"tag_name": "'"$TAG_NAME"'", "target": "'"$COMMIT_SHA"'"}' > /dev/null
 
-          echo "creating or verifying codeberg release metadata wrapper"
           RELEASE_RESP=$(curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases" \
             -H "accept: application/json" \
             -H "Authorization: token $CODEBERG_TOKEN" \
@@ -166,7 +223,7 @@ jobs:
               "tag_name": "'"$TAG_NAME"'",
               "target_commitish": "'"$COMMIT_SHA"'",
               "name": "Release '"$TAG_NAME"'",
-              "body": "Release workflow.",
+              "body": "Release workflow compiled cross-platform runtime files.",
               "draft": false,
               "prerelease": false
             }')
@@ -174,12 +231,10 @@ jobs:
           RELEASE_ID=$(echo "$RELEASE_RESP" | jq -r '.id // empty')
           
           if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
-              echo "release already exists. fetching fallback release id"
               RELEASE_ID=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/tags/$TAG_NAME" \
                 -H "accept: application/json" \
                 -H "Authorization: token $CODEBERG_TOKEN" | jq -r '.id // empty')
               
-              echo "pre-flight check: scanning for duplicate assets to purge"
               EXISTING_ASSETS=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets" \
                 -H "accept: application/json" \
                 -H "Authorization: token $CODEBERG_TOKEN")
@@ -189,7 +244,6 @@ jobs:
                   if [ -f "$asset" ]; then
                       MATCHING_ASSET_ID=$(echo "$EXISTING_ASSETS" | jq -r ".[] | select(.name==\"$asset\") | .id // empty")
                       if [ ! -z "$MATCHING_ASSET_ID" ] && [ "$MATCHING_ASSET_ID" != "null" ]; then
-                          echo "removing old collision asset: $asset"
                           curl -s -X DELETE "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets/$MATCHING_ASSET_ID" \
                             -H "Authorization: token $CODEBERG_TOKEN" > /dev/null
                       fi
@@ -198,7 +252,6 @@ jobs:
               cd ..
           fi
 
-          echo "Uploading active runtime binaries to codeberg release id: $RELEASE_ID"
           cd dist_artifacts
           for asset in *; do
               if [ -f "$asset" ]; then
@@ -209,8 +262,6 @@ jobs:
               fi
           done
           cd ..
-        else
-          echo "No release artifacts generated to build a codeberg release package."
         fi
 
     - name: Sync versions to server config
@@ -229,9 +280,11 @@ jobs:
           VERSION_EXPR="$VERSION_EXPR | .downloads.android_armv7 = \"$BASE_DL/ishowspeed-release-android-armv7.apk\""
           VERSION_EXPR="$VERSION_EXPR | .downloads.android_x64 = \"$BASE_DL/ishowspeed-release-android-x86_64.apk\""
         fi
-        
         if [ "${{ inputs.build_linux }}" = "true" ]; then
           VERSION_EXPR="$VERSION_EXPR | .downloads.linux = \"$BASE_DL/ishowspeed-release-linux-x64.tar.gz\""
+        fi
+        if [ "${{ inputs.build_windows }}" = "true" ]; then
+          VERSION_EXPR="$VERSION_EXPR | .downloads.windows = \"$BASE_DL/ishowspeed-release-windows-x64.zip\""
         fi
         
         jq "$VERSION_EXPR" config.json > tmp.json && mv tmp.json config.json
@@ -246,7 +299,6 @@ jobs:
 
     - name: Notify production server to flush caches
       run: |
-        echo "notifying backend server of fresh server configuration changes"
         curl -s -X POST "${{ secrets.SERVER_API_URL }}/webhook/update-config" \
           -H "accept: application/json" \
           -H "X-Webhook-Secret: ${{ secrets.SERVER_WEBHOOK_SECRET }}" > /dev/null
