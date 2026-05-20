@@ -118,11 +118,11 @@ jobs:
         flutter pub get
         flutter build windows --release
 
-    - name: Archive windows release
-      shell: bash
+    - name: Archive windows welease
+      shell: powershell
       run: |
         mkdir windows_artifacts
-        powershell Compress-Archive -Path src_workspace/build/windows/x64/runner/Release/* -DestinationPath windows_artifacts/ishowspeed-release-windows-x64.zip
+        Get-ChildItem -Path "src_workspace/build/windows/x64/runner/Release/*" | Compress-Archive -DestinationPath "windows_artifacts/ishowspeed-release-windows-x64.zip"
 
     - name: Upload Windows Artifacts
       uses: actions/upload-artifact@v4
