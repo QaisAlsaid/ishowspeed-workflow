@@ -181,16 +181,17 @@ jobs:
         done
         cd ..
 
+    - name: Download web dist artifact
+      if: ${{ inputs.build_web }}
+      uses: actions/download-artifact@v4
+      with:
+        name: web-dist
+        path: web_dist/
+
     - name: Deploy frontend to codeberg pages
       if: ${{ inputs.build_web }}
       run: |
-        mkdir web_dist
         IMAGE_BUFF=$(mktemp -d)
-        
-        uses: actions/download-artifact@v4
-        with:
-          name: web-dist
-          path: web_dist/
         
         git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME.git" "$IMAGE_BUFF"
         rm -rf "$IMAGE_BUFF/webapp"
