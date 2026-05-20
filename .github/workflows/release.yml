@@ -194,9 +194,12 @@ jobs:
         IMAGE_BUFF=$(mktemp -d)
         
         git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME.git" "$IMAGE_BUFF"
+        
         rm -rf "$IMAGE_BUFF/webapp"
         mkdir -p "$IMAGE_BUFF/webapp"
         cp -R web_dist/* "$IMAGE_BUFF/webapp/"
+        
+        cp src_workspace/index.html "$IMAGE_BUFF/" || true
         
         cd "$IMAGE_BUFF"
         git config user.name "GitHub Action Runner"
