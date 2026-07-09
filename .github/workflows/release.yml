@@ -86,7 +86,7 @@ jobs:
         fi
         
         if [ "${{ inputs.build_web }}" = "true" ]; then
-          flutter build web --release --base-href /webapp/
+          flutter build web --release --base-href /ishowspeed/webapp/
           mkdir -p ../web_dist
           cp -R build/web/* ../web_dist/
         fi
