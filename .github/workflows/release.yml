@@ -30,6 +30,7 @@ env:
   SOURCE_REPO_NAME: "ishowspeed-source"
   RELEASE_REPO_NAME: "ishowspeed"
   CONFIG_REPO_NAME: "ishowspeed-server-config"
+  NIX_REPO_NAME: "ishowspeed-nix"
   CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
   CONFIG_TOKEN: ${{ secrets.CONFIG_TOKEN }}
 
@@ -277,6 +278,59 @@ jobs:
           done
           cd ..
         fi
+    - name: Install Nix
+      uses: cachix/install-nix-action@v31
+
+    - name: Update Nix package
+      if: ${{ inputs.build_linux }}
+      run: |
+        NIX_DIR=$(mktemp -d)
+
+        git clone \
+          "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$NIX_REPO_NAME.git" \
+          "$NIX_DIR"
+
+        cd "$NIX_DIR"
+
+        RELEASE_URL="https://codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/download/$TAG_NAME/ishowspeed-release-linux-x64.tar.gz"
+
+        HASH=$(nix-prefetch-url \
+          --type sha256 \
+          "$RELEASE_URL")
+
+        SRI_HASH=$(nix hash convert \
+          --hash-algo sha256 \
+          --to sri \
+          "$HASH")
+
+        sed -i \
+          "s/version = \".*\";/version = \"$RAW_VERSION\";/" \
+          package.nix
+
+        sed -i \
+          "s|url = \".*\";|url = \"$RELEASE_URL\";|" \
+          package.nix
+
+        sed -i \
+          "s/hash = \".*\";/hash = \"$SRI_HASH\";/" \
+          package.nix
+
+        git config user.name "GitHub Action Runner"
+        git config user.email "runner@github.actions"
+
+        git add package.nix
+
+        git commit \
+          -m "chore: update ishowspeed to $TAG_NAME" \
+          || true
+
+        git push origin master
+
+        git tag "$TAG_NAME" || true
+        git push origin "$TAG_NAME" || true
+
+        cd /
+        rm -rf "$NIX_DIR"
 
     - name: Sync versions to server config
       run: |
