@@ -38,335 +38,336 @@ jobs:
   build-ubuntu:
     runs-on: ubuntu-latest
     steps:
-    - name: Install linux build dependencies
-      if: ${{ inputs.build_linux }}
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-        clang \
-        cmake \
-        ninja-build \
-        pkg-config \
-        libgtk-3-dev \
-        liblzma-dev \
-        libsecret-1-dev \
-        libmpv-dev \
-        libepoxy-dev \
-        libfontconfig1-dev
+      - name: Install linux build dependencies
+        if: ${{ inputs.build_linux }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+          clang \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libgtk-3-dev \
+          liblzma-dev \
+          libsecret-1-dev \
+          libmpv-dev \
+          libepoxy-dev \
+          libfontconfig1-dev
 
-    - name: Setup flutter
-      uses: subosito/flutter-action@v2
-      with:
-        channel: 'stable'
-        architecture: x64
+      - name: Setup flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          architecture: x64
 
-    - name: Clone source repository
-      run: |
-        git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
+      - name: Clone source repository
+        run: |
+          git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
 
-    - name: Compile Platforms
-      run: |
-        cd src_workspace
-        flutter pub get
-        
-        if [ "${{ inputs.build_android }}" = "true" ]; then
-          flutter build apk --release
-          mkdir -p ../ubuntu_artifacts
-          cp build/app/outputs/flutter-apk/app-release.apk ../ubuntu_artifacts/ishowspeed-release-android-universal.apk
-          
-          flutter clean
+      - name: Compile Platforms
+        run: |
+          cd src_workspace
           flutter pub get
-          flutter build apk --release --split-per-abi
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ../ubuntu_artifacts/ishowspeed-release-android-armv7.apk
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../ubuntu_artifacts/ishowspeed-release-android-armv8.apk
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk ../ubuntu_artifacts/ishowspeed-release-android-x86_64.apk
-        fi
-        
-        if [ "${{ inputs.build_linux }}" = "true" ]; then
-          flutter build linux --release
-          mkdir -p ../ubuntu_artifacts
-          tar -czf ../ubuntu_artifacts/ishowspeed-release-linux-x64.tar.gz -C build/linux/x64/release/bundle .
-        fi
-        
-        if [ "${{ inputs.build_web }}" = "true" ]; then
-          flutter build web --release --base-href /ishowspeed/webapp/
-          mkdir -p ../web_dist
-          cp -R build/web/* ../web_dist/
-        fi
+          
+          if [ "${{ inputs.build_android }}" = "true" ]; then
+            flutter build apk --release
+            mkdir -p ../ubuntu_artifacts
+            cp build/app/outputs/flutter-apk/app-release.apk ../ubuntu_artifacts/ishowspeed-release-android-universal.apk
+            
+            flutter clean
+            flutter pub get
+            flutter build apk --release --split-per-abi
+            cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ../ubuntu_artifacts/ishowspeed-release-android-armv7.apk
+            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../ubuntu_artifacts/ishowspeed-release-android-armv8.apk
+            cp build/app/outputs/flutter-apk/app-x86_64-release.apk ../ubuntu_artifacts/ishowspeed-release-android-x86_64.apk
+          fi
+          
+          if [ "${{ inputs.build_linux }}" = "true" ]; then
+            flutter build linux --release
+            mkdir -p ../ubuntu_artifacts
+            tar -czf ../ubuntu_artifacts/ishowspeed-release-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+          fi
+          
+          if [ "${{ inputs.build_web }}" = "true" ]; then
+            flutter build web --release --base-href /ishowspeed/webapp/
+            mkdir -p ../web_dist
+            cp -R build/web/* ../web_dist/
+          fi
 
-    - name: Upload Ubuntu Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: ubuntu-artifacts
-        path: ubuntu_artifacts/
-        if-no-files-found: ignore
+      - name: Upload Ubuntu Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-artifacts
+          path: ubuntu_artifacts/
+          if-no-files-found: ignore
 
-    - name: Upload Web Dist
-      if: ${{ inputs.build_web }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: web-dist
-        path: web_dist/
+      - name: Upload Web Dist
+        if: ${{ inputs.build_web }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web_dist/
 
   build-windows:
     if: ${{ inputs.build_windows }}
     runs-on: windows-latest
     steps:
-    - name: Setup flutter
-      uses: subosito/flutter-action@v2
-      with:
-        channel: 'stable'
+      - name: Setup flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
 
-    - name: Clone source repository
-      shell: bash
-      run: |
-        git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
+      - name: Clone source repository
+        shell: bash
+        run: |
+          git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
 
-    - name: Compile windows app
-      shell: bash
-      run: |
-        cd src_workspace
-        flutter pub get
-        flutter build windows --release
+      - name: Compile windows app
+        shell: bash
+        run: |
+          cd src_workspace
+          flutter pub get
+          flutter build windows --release
 
-    - name: Archive windows welease
-      shell: powershell
-      run: |
-        mkdir windows_artifacts
-        Get-ChildItem -Path "src_workspace/build/windows/x64/runner/Release/*" | Compress-Archive -DestinationPath "windows_artifacts/ishowspeed-release-windows-x64.zip"
+      - name: Archive windows welease
+        shell: powershell
+        run: |
+          mkdir windows_artifacts
+          Get-ChildItem -Path "src_workspace/build/windows/x64/runner/Release/*" | Compress-Archive -DestinationPath "windows_artifacts/ishowspeed-release-windows-x64.zip"
 
-    - name: Upload Windows Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-artifacts
-        path: windows_artifacts/
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: windows_artifacts/
 
   sync-and-release:
     needs: [build-ubuntu, build-windows]
     if: always()
     runs-on: ubuntu-latest
     steps:
-    - name: Setup environment workspace
-      run: |
-        mkdir dist_artifacts
-        mkdir src_workspace
+      - name: Setup environment workspace
+        run: |
+          mkdir dist_artifacts
+          mkdir src_workspace
 
-    - name: Clone framework to verify tags
-      run: |
-        git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
-        cd src_workspace
-        echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-        DETECTED_TAG=$(git tag --points-at HEAD | head -n 1)
-        if [ -z "$DETECTED_TAG" ]; then
-          DETECTED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-        fi
-        if [ -z "$DETECTED_TAG" ]; then
-          echo "ERROR: no git tag found"
-          exit 1
-        fi
-        echo "TAG_NAME=$DETECTED_TAG" >> $GITHUB_ENV
-        echo "RAW_VERSION=$(echo "$DETECTED_TAG" | sed 's/^v//')" >> $GITHUB_ENV
-        cd ..
-
-    - name: Download ubuntu artifacts
-      if: ${{ inputs.build_linux || inputs.build_android }}
-      uses: actions/download-artifact@v4
-      with:
-        name: ubuntu-artifacts
-        path: dist_artifacts/
-
-    - name: Download windows artifacts
-      if: ${{ inputs.build_windows }}
-      uses: actions/download-artifact@v4
-      with:
-        name: windows-artifacts
-        path: dist_artifacts/
-
-    - name: Calculate checksums
-      run: |
-        cd dist_artifacts
-        for file in *; do
-            if [[ -f "$file" && "$file" != *"*"* && "$file" != "*.sha256" ]]; then
-                sha256sum "$file" > "$file".sha256
-            fi
-        done
-        cd ..
-
-    - name: Download web dist artifact
-      if: ${{ inputs.build_web }}
-      uses: actions/download-artifact@v4
-      with:
-        name: web-dist
-        path: web_dist/
-
-    - name: Deploy frontend to codeberg pages
-      if: ${{ inputs.build_web }}
-      run: |
-        IMAGE_BUFF=$(mktemp -d)
-        
-        git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME.git" "$IMAGE_BUFF"
-        
-        rm -rf "$IMAGE_BUFF/webapp"
-        mkdir -p "$IMAGE_BUFF/webapp"
-        cp -R web_dist/* "$IMAGE_BUFF/webapp/"
-        
-        cp src_workspace/index.html "$IMAGE_BUFF/" || true
-        
-        cd "$IMAGE_BUFF"
-        git config user.name "GitHub Action Runner"
-        git config user.email "runner@github.actions"
-        git add .
-        git diff-index --quiet HEAD || git commit -m "deploy: updated web for $TAG_NAME"
-        git push origin pages
-        cd - > /dev/null
-        rm -rf "$IMAGE_BUFF"
-
-    - name: Sync releases and upload artifacts to codeberg
-      run: |
-        if [ -d "dist_artifacts" ] && [ "$(ls -A dist_artifacts)" ]; then
-          curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/tags" \
-            -H "accept: application/json" \
-            -H "Authorization: token $CODEBERG_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"tag_name": "'"$TAG_NAME"'", "target": "'"$COMMIT_SHA"'"}' > /dev/null
-
-          RELEASE_RESP=$(curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases" \
-            -H "accept: application/json" \
-            -H "Authorization: token $CODEBERG_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "tag_name": "'"$TAG_NAME"'",
-              "target_commitish": "'"$COMMIT_SHA"'",
-              "name": "Release '"$TAG_NAME"'",
-              "body": "Release workflow compiled cross-platform runtime files.",
-              "draft": false,
-              "prerelease": false
-            }')
-
-          RELEASE_ID=$(echo "$RELEASE_RESP" | jq -r '.id // empty')
-          
-          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
-              RELEASE_ID=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/tags/$TAG_NAME" \
-                -H "accept: application/json" \
-                -H "Authorization: token $CODEBERG_TOKEN" | jq -r '.id // empty')
-              
-              EXISTING_ASSETS=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets" \
-                -H "accept: application/json" \
-                -H "Authorization: token $CODEBERG_TOKEN")
-              
-              cd dist_artifacts
-              for asset in *; do
-                  if [ -f "$asset" ]; then
-                      MATCHING_ASSET_ID=$(echo "$EXISTING_ASSETS" | jq -r ".[] | select(.name==\"$asset\") | .id // empty")
-                      if [ ! -z "$MATCHING_ASSET_ID" ] && [ "$MATCHING_ASSET_ID" != "null" ]; then
-                          curl -s -X DELETE "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets/$MATCHING_ASSET_ID" \
-                            -H "Authorization: token $CODEBERG_TOKEN" > /dev/null
-                      fi
-                  fi
-              done
-              cd ..
+      - name: Clone framework to verify tags
+        run: |
+          git clone --tags "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$SOURCE_REPO_NAME.git" src_workspace
+          cd src_workspace
+          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          DETECTED_TAG=$(git tag --points-at HEAD | head -n 1)
+          if [ -z "$DETECTED_TAG" ]; then
+            DETECTED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           fi
+          if [ -z "$DETECTED_TAG" ]; then
+            echo "ERROR: no git tag found"
+            exit 1
+          fi
+          echo "TAG_NAME=$DETECTED_TAG" >> $GITHUB_ENV
+          echo "RAW_VERSION=$(echo "$DETECTED_TAG" | sed 's/^v//')" >> $GITHUB_ENV
+          cd ..
 
+      - name: Download ubuntu artifacts
+        if: ${{ inputs.build_linux || inputs.build_android }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ubuntu-artifacts
+          path: dist_artifacts/
+
+      - name: Download windows artifacts
+        if: ${{ inputs.build_windows }}
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist_artifacts/
+
+      - name: Calculate checksums
+        run: |
           cd dist_artifacts
-          for asset in *; do
-              if [ -f "$asset" ]; then
-                  curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets" \
-                    -H "Authorization: token $CODEBERG_TOKEN" \
-                    -H "Content-Type: multipart/form-data" \
-                    -F "attachment=@$asset" > /dev/null
+          for file in *; do
+              if [[ -f "$file" && "$file" != *"*"* && "$file" != "*.sha256" ]]; then
+                  sha256sum "$file" > "$file".sha256
               fi
           done
           cd ..
-        fi
-    - name: Install Nix
-      uses: cachix/install-nix-action@v31
 
-    - name: Update Nix package
-      if: ${{ inputs.build_linux }}
-      run: |
-        NIX_DIR=$(mktemp -d)
+      - name: Download web dist artifact
+        if: ${{ inputs.build_web }}
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web_dist/
 
-        git clone \
-          "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$NIX_REPO_NAME.git" \
-          "$NIX_DIR"
+      - name: Deploy frontend to codeberg pages
+        if: ${{ inputs.build_web }}
+        run: |
+          IMAGE_BUFF=$(mktemp -d)
+          
+          git clone --branch pages "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME.git" "$IMAGE_BUFF"
+          
+          rm -rf "$IMAGE_BUFF/webapp"
+          mkdir -p "$IMAGE_BUFF/webapp"
+          cp -R web_dist/* "$IMAGE_BUFF/webapp/"
+          
+          cp src_workspace/index.html "$IMAGE_BUFF/" || true
+          
+          cd "$IMAGE_BUFF"
+          git config user.name "GitHub Action Runner"
+          git config user.email "runner@github.actions"
+          git add .
+          git diff-index --quiet HEAD || git commit -m "deploy: updated web for $TAG_NAME"
+          git push origin pages
+          cd - > /dev/null
+          rm -rf "$IMAGE_BUFF"
 
-        cd "$NIX_DIR"
+      - name: Sync releases and upload artifacts to codeberg
+        run: |
+          if [ -d "dist_artifacts" ] && [ "$(ls -A dist_artifacts)" ]; then
+            curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/tags" \
+              -H "accept: application/json" \
+              -H "Authorization: token $CODEBERG_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"tag_name": "'"$TAG_NAME"'", "target": "'"$COMMIT_SHA"'"}' > /dev/null
 
-        RELEASE_URL="https://codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/download/$TAG_NAME/ishowspeed-release-linux-x64.tar.gz"
+            RELEASE_RESP=$(curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases" \
+              -H "accept: application/json" \
+              -H "Authorization: token $CODEBERG_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "tag_name": "'"$TAG_NAME"'",
+                "target_commitish": "'"$COMMIT_SHA"'",
+                "name": "Release '"$TAG_NAME"'",
+                "body": "Release workflow compiled cross-platform runtime files.",
+                "draft": false,
+                "prerelease": false
+              }')
 
-        HASH=$(nix-prefetch-url \
-          --type sha256 \
-          "$RELEASE_URL")
+            RELEASE_ID=$(echo "$RELEASE_RESP" | jq -r '.id // empty')
 
-        SRI_HASH=$(nix hash convert \
-          --hash-algo sha256 \
-          --to sri \
-          "$HASH")
+            if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+                RELEASE_ID=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/tags/$TAG_NAME" \
+                  -H "accept: application/json" \
+                  -H "Authorization: token $CODEBERG_TOKEN" | jq -r '.id // empty')
 
-        sed -i \
-          "s/version = \".*\";/version = \"$RAW_VERSION\";/" \
-          package.nix
+                EXISTING_ASSETS=$(curl -s -X GET "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets" \
+                  -H "accept: application/json" \
+                  -H "Authorization: token $CODEBERG_TOKEN")
 
-        sed -i \
-          "s|url = \".*\";|url = \"$RELEASE_URL\";|" \
-          package.nix
+                cd dist_artifacts
+                for asset in *; do
+                    if [ -f "$asset" ]; then
+                        MATCHING_ASSET_ID=$(echo "$EXISTING_ASSETS" | jq -r ".[] | select(.name==\"$asset\") | .id // empty")
+                        if [ ! -z "$MATCHING_ASSET_ID" ] && [ "$MATCHING_ASSET_ID" != "null" ]; then
+                            curl -s -X DELETE "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets/$MATCHING_ASSET_ID" \
+                              -H "Authorization: token $CODEBERG_TOKEN" > /dev/null
+                        fi
+                    fi
+                done
+                cd ..
+            fi
 
-        sed -i \
-          "s/hash = \".*\";/hash = \"$SRI_HASH\";/" \
-          package.nix
+            cd dist_artifacts
+            for asset in *; do
+                if [ -f "$asset" ]; then
+                    curl -s -X POST "https://codeberg.org/api/v1/repos/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/$RELEASE_ID/assets" \
+                      -H "Authorization: token $CODEBERG_TOKEN" \
+                      -H "Content-Type: multipart/form-data" \
+                      -F "attachment=@$asset" > /dev/null
+                fi
+            done
+            cd ..
+          fi
 
-        git config user.name "GitHub Action Runner"
-        git config user.email "runner@github.actions"
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
 
-        git add package.nix
+      - name: Update Nix package release metadata
+        if: ${{ inputs.build_linux }}
+        run: |
+          NIX_DIR=$(mktemp -d)
 
-        git commit \
-          -m "chore: update ishowspeed to $TAG_NAME" \
-          || true
+          git clone \
+            "https://$CODEBERG_USER:$CODEBERG_TOKEN@codeberg.org/$CODEBERG_USER/$NIX_REPO_NAME.git" \
+            "$NIX_DIR"
 
-        git push origin master
+          cd "$NIX_DIR"
 
-        git tag "$TAG_NAME" || true
-        git push origin "$TAG_NAME" || true
+          RELEASE_URL="https://codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/download/$TAG_NAME/ishowspeed-release-linux-x64.tar.gz"
 
-        cd /
-        rm -rf "$NIX_DIR"
+          HASH=$(nix-prefetch-url \
+            --type sha256 \
+            "$RELEASE_URL")
 
-    - name: Sync versions to server config
-      run: |
-        CONFIG_DIR=$(mktemp -d)
-        BASE_DL="https://codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/download/$TAG_NAME"
-        
-        git clone "https://x-access-token:$CONFIG_TOKEN@github.com/$CONFIG_REPO_USER/$CONFIG_REPO_NAME.git" "$CONFIG_DIR"
-        cd "$CONFIG_DIR"
-        
-        VERSION_EXPR=".latest_version = \"$RAW_VERSION\""
-        
-        if [ "${{ inputs.build_android }}" = "true" ]; then
-          VERSION_EXPR="$VERSION_EXPR | .downloads.android_universal = \"$BASE_DL/ishowspeed-release-android-universal.apk\""
-          VERSION_EXPR="$VERSION_EXPR | .downloads.android_armv8 = \"$BASE_DL/ishowspeed-release-android-armv8.apk\""
-          VERSION_EXPR="$VERSION_EXPR | .downloads.android_armv7 = \"$BASE_DL/ishowspeed-release-android-armv7.apk\""
-          VERSION_EXPR="$VERSION_EXPR | .downloads.android_x64 = \"$BASE_DL/ishowspeed-release-android-x86_64.apk\""
-        fi
-        if [ "${{ inputs.build_linux }}" = "true" ]; then
-          VERSION_EXPR="$VERSION_EXPR | .downloads.linux = \"$BASE_DL/ishowspeed-release-linux-x64.tar.gz\""
-        fi
-        if [ "${{ inputs.build_windows }}" = "true" ]; then
-          VERSION_EXPR="$VERSION_EXPR | .downloads.windows = \"$BASE_DL/ishowspeed-release-windows-x64.zip\""
-        fi
-        
-        jq "$VERSION_EXPR" config.json > tmp.json && mv tmp.json config.json
-        
-        git config user.name "GitHub Action Runner"
-        git config user.email "runner@github.actions"
-        git add config.json
-        git diff-index --quiet HEAD || git commit -m "chore: configuration updates for $TAG_NAME"
-        git push origin master
-        cd - > /dev/null
-        rm -rf "$CONFIG_DIR"
+          SRI_HASH=$(nix hash convert \
+            --hash-algo sha256 \
+            --to sri \
+            "$HASH")
 
-    - name: Notify production server to flush caches
-      run: |
-        curl -s -X POST "${{ secrets.SERVER_API_URL }}/webhook/update-config" \
-          -H "accept: application/json" \
-          -H "X-Webhook-Secret: ${{ secrets.SERVER_WEBHOOK_SECRET }}" > /dev/null
+          cat > version.nix <<EOF
+          {
+           version = "$RAW_VERSION";
+
+           hash = "$SRI_HASH";
+          }
+          EOF
+
+          git config user.name "GitHub Action Runner"
+          git config user.email "runner@github.actions"
+
+          git add version.nix
+
+          git commit \
+            -m "chore: update ishowspeed to $TAG_NAME" \
+            || true
+
+          git push origin master
+
+          git tag "$TAG_NAME" || true
+          git push origin "$TAG_NAME" || true
+
+          cd /
+          rm -rf "$NIX_DIR"
+
+      - name: Sync versions to server config
+        run: |
+          CONFIG_DIR=$(mktemp -d)
+          BASE_DL="https://codeberg.org/$CODEBERG_USER/$RELEASE_REPO_NAME/releases/download/$TAG_NAME"
+
+          git clone "https://x-access-token:$CONFIG_TOKEN@github.com/$CONFIG_REPO_USER/$CONFIG_REPO_NAME.git" "$CONFIG_DIR"
+          cd "$CONFIG_DIR"
+
+          VERSION_EXPR=".latest_version = \"$RAW_VERSION\""
+
+          if [ "${{ inputs.build_android }}" = "true" ]; then
+            VERSION_EXPR="$VERSION_EXPR | .downloads.android_universal = \"$BASE_DL/ishowspeed-release-android-universal.apk\""
+            VERSION_EXPR="$VERSION_EXPR | .downloads.android_armv8 = \"$BASE_DL/ishowspeed-release-android-armv8.apk\""
+            VERSION_EXPR="$VERSION_EXPR | .downloads.android_armv7 = \"$BASE_DL/ishowspeed-release-android-armv7.apk\""
+            VERSION_EXPR="$VERSION_EXPR | .downloads.android_x64 = \"$BASE_DL/ishowspeed-release-android-x86_64.apk\""
+          fi
+
+          if [ "${{ inputs.build_linux }}" = "true" ]; then
+            VERSION_EXPR="$VERSION_EXPR | .downloads.linux = \"$BASE_DL/ishowspeed-release-linux-x64.tar.gz\""
+          fi
+
+          if [ "${{ inputs.build_windows }}" = "true" ]; then
+            VERSION_EXPR="$VERSION_EXPR | .downloads.windows = \"$BASE_DL/ishowspeed-release-windows-x64.zip\""
+          fi
+
+          jq "$VERSION_EXPR" config.json > tmp.json && mv tmp.json config.json
+
+          git config user.name "GitHub Action Runner"
+          git config user.email "runner@github.actions"
+
+          git add config.json
+          git diff-index --quiet HEAD || git commit -m "chore: configuration updates for $TAG_NAME"
+          git push origin master
+
+          cd - > /dev/null
+          rm -rf "$CONFIG_DIR"
+
+      - name: Notify production server to flush caches
+        run: |
+          curl -s -X POST "${{ secrets.SERVER_API_URL }}/webhook/update-config" \
+            -H "accept: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.SERVER_WEBHOOK_SECRET }}" > /dev/null
